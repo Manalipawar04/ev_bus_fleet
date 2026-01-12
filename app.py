@@ -1,85 +1,70 @@
 import streamlit as st
-import pandas as pd
-import joblib
 import numpy as np
+import joblib
 
-# --- 1. SET UP PAGE ---
-st.set_page_config(page_title="EV Bus Battery Intelligence", layout="wide")
-st.title("⚡ EV Bus Battery Intelligence System")
-st.markdown("""
-Predict **State of Charge (SoC)**, **State of Health (SoH)**, and **Operational Risk** using real-time telemetry data.
-""")
+# Load trained models and scaler
+trip_model = joblib.load("model_trip.pkl")
+health_model = joblib.load("model_health.pkl")
+charge_model = joblib.load("model_charge.pkl")
+scaler = joblib.load("scaler.pkl")
 
-# --- 2. LOAD TRAINED MODELS ---
-# Replace 'model.pkl' with the actual filename from your workflow
-@st.cache_resource
-def load_models():
-    try:
-        # In a real scenario, you'd load the .pkl files saved during training
-        # model = joblib.load('ev_battery_model.pkl')
-        # For this example, we assume the model logic is ready to use
-        return None 
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None
+# App title
+st.set_page_config(page_title="EV Bus Fleet ML Platform", layout="centered")
+st.title("🚍 EV Bus Fleet Analytics")
 
-model = load_models()
+st.write(
+    "This system predicts **Trip Feasibility**, **Battery Health (SOH)**, "
+    "and **Charging Time** using historical EV battery telemetry."
+)
 
-# --- 3. SIDEBAR INPUTS (Telemetery Features) ---
-st.sidebar.header("Real-time Telemetry Inputs")
+# Sidebar inputs
+st.sidebar.header("🔧 Input Battery Parameters")
 
-def user_input_features():
-    voltage = st.sidebar.slider("Voltage (V)", 300.0, 800.0, 600.0)
-    current = st.sidebar.slider("Current (A)", -200.0, 200.0, 50.0)
-    temp = st.sidebar.slider("Temperature (°C)", -10.0, 60.0, 25.0)
-    cycle_count = st.sidebar.number_input("Cycle Count", min_value=0, value=500)
-    avg_speed = st.sidebar.slider("Average Trip Speed (km/h)", 0, 80, 35)
-    
-    data = {
-        'Voltage': voltage,
-        'Current': current,
-        'Temperature': temp,
-        'Cycle_Count': cycle_count,
-        'Avg_Speed': avg_speed
-    }
-    return pd.DataFrame([data])
+SOC = st.sidebar.slider("State of Charge (SOC %)", 0, 100, 60)
+terminal_voltage = st.sidebar.number_input("Terminal Voltage (V)", value=400.0)
+battery_current = st.sidebar.number_input("Battery Current (A)", value=50.0)
+battery_temp = st.sidebar.slider("Battery Temperature (°C)", 0, 80, 35)
+ambient_temp = st.sidebar.slider("Ambient Temperature (°C)", 0, 60, 30)
+internal_resistance = st.sidebar.number_input("Internal Resistance (Ohm)", value=0.02)
+dT_dt = st.sidebar.number_input("dT/dt (Thermal Rate)", value=0.5)
+dV_dt = st.sidebar.number_input("dV/dt (Voltage Rate)", value=0.3)
+thermal_stress_index = st.sidebar.number_input("Thermal Stress Index", value=1.2)
 
-input_df = user_input_features()
+# Prepare input array
+input_data = np.array([[
+    SOC,
+    terminal_voltage,
+    battery_current,
+    battery_temp,
+    ambient_temp,
+    internal_resistance,
+    dT_dt,
+    dV_dt,
+    thermal_stress_index
+]])
 
-# --- 4. DISPLAY INPUT DATA ---
-st.subheader("Current Telemetry Snapshot")
-st.write(input_df)
+input_scaled = scaler.transform(input_data)
 
-# --- 5. PREDICTIONS & LOGIC ---
-st.subheader("System Predictions")
+# Prediction button
+if st.button("🔍 Predict"):
+    trip_pred = trip_model.predict(input_scaled)[0]
+    health_pred = health_model.predict(input_scaled)[0]
+    charge_pred = charge_model.predict(input_scaled)[0]
 
-# Dummy logic for demonstration based on the workflow provided
-# In production, replace these with model.predict(input_df)
-soc_pred = 85.5 - (input_df['Current'][0] * 0.05) # Simulated SoC
-soh_pred = 98.0 - (input_df['Cycle_Count'][0] * 0.005) # Simulated SoH
+    st.subheader("📊 Prediction Results")
 
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("State of Charge (SoC)", f"{soc_pred:.1f}%")
-    st.progress(soc_pred / 100)
-
-with col2:
-    st.metric("State of Health (SoH)", f"{soh_pred:.1f}%")
-    st.info("Aging status: Normal")
-
-with col3:
-    risk = "High" if temp > 50 or soc_pred < 15 else "Low"
-    st.metric("Operational Risk", risk)
-    if risk == "High":
-        st.warning("⚠️ Warning: Risk of breakdown detected!")
+    # Trip feasibility result
+    if trip_pred == 1:
+        st.success("✅ Trip Feasible – Bus can complete the route safely.")
     else:
-        st.success("✅ System Reliable")
+        st.error("❌ Trip Not Feasible – Charging required before dispatch.")
 
-# --- 6. TRIP FEASIBILITY ---
-st.subheader("Route Analysis")
-required_soc = 20.0 # Example requirement for the next route
-if soc_pred > required_soc:
-    st.write(f"The bus has enough charge for the next fixed route (Requires {required_soc}%).")
-else:
-    st.error("Insufficient charge for next trip. Schedule immediate charging.")
+    # Battery health
+    st.info(f"🔋 Estimated Battery Health (SOH): **{health_pred:.2f}%**")
+
+    # Charging time
+    st.warning(f"⚡ Estimated Required Charging Time: **{charge_pred:.2f} minutes**")
+
+# Footer
+st.markdown("---")
+st.caption("ML-based Decision Support System for EV Bus Fleet Operations")
