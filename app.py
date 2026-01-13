@@ -10,7 +10,7 @@ scaler = joblib.load("scaler.pkl")
 st.set_page_config(page_title="EV Bus Battery ML Platform", layout="centered")
 
 st.title("🚌 EV Bus Battery Health & Trip Feasibility System")
-st.write("Machine Learning-driven platform to prevent mid-route EV bus breakdowns")
+st.write("EV-Bus Intelligent Fleet Analytics ")
 
 st.header("🔋 Battery Input Parameters")
 
@@ -63,3 +63,4 @@ if st.button("🚀 Predict"):
         st.success("✅ Trip Feasible: Bus can safely complete the route")
     else:
         st.error("❌ Trip NOT Feasible: Risk of mid-route breakdown")
+
