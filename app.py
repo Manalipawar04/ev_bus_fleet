@@ -2,69 +2,64 @@ import streamlit as st
 import numpy as np
 import joblib
 
-# Load trained models and scaler
-trip_model = joblib.load("model_trip.pkl")
-health_model = joblib.load("model_health.pkl")
-charge_model = joblib.load("model_charge.pkl")
+# Load models
+lr_model = joblib.load("linear_regression_charging_time.pkl")
+rf_model = joblib.load("random_forest_trip_feasibility.pkl")
 scaler = joblib.load("scaler.pkl")
 
-# App title
-st.set_page_config(page_title="EV Bus Fleet ML Platform", layout="centered")
-st.title("🚍 EV Bus Fleet Analytics")
+st.set_page_config(page_title="EV Bus Battery ML Platform", layout="centered")
 
-st.write(
-    "This system predicts **Trip Feasibility**, **Battery Health (SOH)**, "
-    "and **Charging Time** using historical EV battery telemetry."
-)
+st.title("🚌 EV Bus Battery Health & Trip Feasibility System")
+st.write("Machine Learning-driven platform to prevent mid-route EV bus breakdowns")
 
-# Sidebar inputs
-st.sidebar.header("🔧 Input Battery Parameters")
+st.header("🔋 Battery Input Parameters")
 
-SOC = st.sidebar.slider("State of Charge (SOC %)", 0, 100, 60)
-terminal_voltage = st.sidebar.number_input("Terminal Voltage (V)", value=400.0)
-battery_current = st.sidebar.number_input("Battery Current (A)", value=50.0)
-battery_temp = st.sidebar.slider("Battery Temperature (°C)", 0, 80, 35)
-ambient_temp = st.sidebar.slider("Ambient Temperature (°C)", 0, 60, 30)
-internal_resistance = st.sidebar.number_input("Internal Resistance (Ohm)", value=0.02)
-dT_dt = st.sidebar.number_input("dT/dt (Thermal Rate)", value=0.5)
-dV_dt = st.sidebar.number_input("dV/dt (Voltage Rate)", value=0.3)
-thermal_stress_index = st.sidebar.number_input("Thermal Stress Index", value=1.2)
+# User Inputs
+SOC = st.slider("State of Charge (SOC %)", 0, 100, 50)
+SOH = st.slider("State of Health (SOH %)", 0, 100, 80)
+terminal_voltage = st.number_input("Terminal Voltage (V)", value=400.0)
+battery_current = st.number_input("Battery Current (A)", value=120.0)
+battery_temp = st.slider("Battery Temperature (°C)", -10, 80, 30)
+ambient_temp = st.slider("Ambient Temperature (°C)", -10, 60, 25)
+internal_resistance = st.number_input("Internal Resistance (Ohm)", value=0.02)
+charging_efficiency = st.slider("Charging Efficiency (%)", 0, 100, 90)
+cycle_degradation = st.slider("Cycle Degradation (%)", 0, 100, 10)
 
-# Prepare input array
-input_data = np.array([[
-    SOC,
-    terminal_voltage,
-    battery_current,
-    battery_temp,
-    ambient_temp,
-    internal_resistance,
-    dT_dt,
-    dV_dt,
-    thermal_stress_index
-]])
+thermal_stress_index = st.slider("Thermal Stress Index", 0.0, 1.0, 0.3)
+aging_indicator = st.slider("Aging Indicator", 0.0, 1.0, 0.4)
 
-input_scaled = scaler.transform(input_data)
+over_temp_flag = st.selectbox("Over Temperature Flag", [0, 1])
+over_voltage_flag = st.selectbox("Over Voltage Flag", [0, 1])
 
-# Prediction button
-if st.button("🔍 Predict"):
-    trip_pred = trip_model.predict(input_scaled)[0]
-    health_pred = health_model.predict(input_scaled)[0]
-    charge_pred = charge_model.predict(input_scaled)[0]
+# ------------------ PREDICTIONS ------------------
 
+if st.button("🚀 Predict"):
+
+    # ----- Linear Regression Prediction -----
+    reg_input = np.array([[
+        SOC, SOH, terminal_voltage, battery_current,
+        battery_temp, ambient_temp, internal_resistance,
+        charging_efficiency, cycle_degradation
+    ]])
+
+    reg_input_scaled = scaler.transform(reg_input)
+    predicted_charging_time = lr_model.predict(reg_input_scaled)[0]
+
+    # ----- Random Forest Classification -----
+    clf_input = np.array([[
+        SOC, SOH, battery_temp, ambient_temp,
+        terminal_voltage, internal_resistance,
+        thermal_stress_index, aging_indicator
+    ]])
+
+    trip_prediction = rf_model.predict(clf_input)[0]
+
+    # ------------------ OUTPUT ------------------
     st.subheader("📊 Prediction Results")
 
-    # Trip feasibility result
-    if trip_pred == 1:
-        st.success("✅ Trip Feasible – Bus can complete the route safely.")
+    st.success(f"⏱ Estimated Charging Time: {predicted_charging_time:.2f} minutes")
+
+    if trip_prediction == 1 and over_temp_flag == 0 and over_voltage_flag == 0:
+        st.success("✅ Trip Feasible: Bus can safely complete the route")
     else:
-        st.error("❌ Trip Not Feasible – Charging required before dispatch.")
-
-    # Battery health
-    st.info(f"🔋 Estimated Battery Health (SOH): **{health_pred:.2f}%**")
-
-    # Charging time
-    st.warning(f"⚡ Estimated Required Charging Time: **{charge_pred:.2f} minutes**")
-
-# Footer
-st.markdown("---")
-st.caption("ML-based Decision Support System for EV Bus Fleet Operations")
+        st.error("❌ Trip NOT Feasible: Risk of mid-route breakdown")
